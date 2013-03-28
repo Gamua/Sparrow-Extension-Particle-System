@@ -6,10 +6,6 @@
 #import <Foundation/Foundation.h>
 #import "SXParticleSystem.h"
 
-@interface Game : SPStage
-{
-  @private
-    SXParticleSystem *mParticleSystem;    
-}
+@interface Game : SPSprite
 
 @end

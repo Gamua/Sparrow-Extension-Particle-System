@@ -10,15 +10,26 @@
 //
 
 #import "SXParticleSystem.h"
-#import "SXNSDataExtensions.h"
 
-#import <OpenGLES/ES1/gl.h>
 #import <math.h>
 
-// --- macros --------------------------------------------------------------------------------------
+// --- structs -------------------------------------------------------------------------------------
 
-// clamp a value within the defined bounds
-#define CLAMP(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
+typedef struct
+{
+    SXColor4f color, colorDelta;
+    float x, y;
+    float startX, startY;
+    float velocityX, velocityY;
+    float radialAcceleration;
+    float tangentialAcceleration;
+    float radius, radiusDelta;
+    float rotation, rotationDelta;
+    float size, sizeDelta;
+    float timeToLive;
+} SXParticle;
+
+// --- macros --------------------------------------------------------------------------------------
 
 // square a number
 #define SQ(x) ((x)*(x))
@@ -32,86 +43,132 @@
 // returns a random value between (base - variance) and (base + variance)
 #define RANDOM_VARIANCE(base, variance)    ((base) + (variance) * (RANDOM_FLOAT() * 2.0f - 1.0f))
 
-#define RANDOM_COLOR_VARIANCE(base, variance)                                              \
-    (SXColor4f){ .red   = CLAMP(RANDOM_VARIANCE(base.red,   variance.red),   0.0f, 1.0f),  \
-                 .green = CLAMP(RANDOM_VARIANCE(base.green, variance.green), 0.0f, 1.0f),  \
-                 .blue  = CLAMP(RANDOM_VARIANCE(base.blue,  variance.blue),  0.0f, 1.0f),  \
-                 .alpha = CLAMP(RANDOM_VARIANCE(base.alpha, variance.alpha), 0.0f, 1.0f) }
-
-// --- private interface ---------------------------------------------------------------------------
-
-@interface SXParticleSystem()
-
-- (void)addParticleWithElapsedTime:(double)time;
-- (void)advanceParticle:(SXParticle *)particle byTime:(double)passedTime;
-- (void)parseConfiguration:(NSString *)path;
-- (SXColor4f)colorFromDictionary:(NSDictionary *)dictionary;
-
-@end
+#define RANDOM_COLOR_VARIANCE(base, variance)                                          \
+(SXColor4f){ .red   = SP_CLAMP(RANDOM_VARIANCE(base.red,   variance.red),   0.0f, 1.0f),  \
+             .green = SP_CLAMP(RANDOM_VARIANCE(base.green, variance.green), 0.0f, 1.0f),  \
+             .blue  = SP_CLAMP(RANDOM_VARIANCE(base.blue,  variance.blue),  0.0f, 1.0f),  \
+             .alpha = SP_CLAMP(RANDOM_VARIANCE(base.alpha, variance.alpha), 0.0f, 1.0f) }
 
 // --- class implementation ------------------------------------------------------------------------
 
 @implementation SXParticleSystem
+{
+    SPImage *_particleImage;
+    SPTexture *_texture;
+    SPQuadBatch *_quadBatch;
+    SXParticle *_particles;
+    
+    NSString *_path;
+    double _burstTime;
+    double _frameTime;
+    int _numParticles;
+    float _scaleFactor;
+                                                    // .pex element name
+    // emitter configuration
+    SXParticleEmitterType _emitterType;             // emitterType
+    float _emitterX;                                // sourcePosition x (ignored)
+    float _emitterY;                                // sourcePosition y (ignored)
+    float _emitterXVariance;                        // sourcePositionVariance x
+    float _emitterYVariance;                        // sourcePositionVariance y
+    
+    // particle configuration
+    int _maxNumParticles;                           // maxParticles
+    float _lifespan;                                // particleLifeSpan
+    float _lifespanVariance;                        // particleLifeSpanVariance
+    float _startSize;                               // startParticleSize
+    float _startSizeVariance;                       // startParticleSizeVariance
+    float _endSize;                                 // finishParticleSize
+    float _endSizeVariance;                         // finishParticleSize
+    float _emitAngle;                               // angle
+    float _emitAngleVariance;                       // angleVariance
+    // [rotation not supported!]
+    
+    // gravity configuration
+    float _speed;                                   // speed
+    float _speedVariance;                           // speedVariance
+    float _gravityX;                                // gravity x
+    float _gravityY;                                // gravity y
+    float _radialAcceleration;                      // radialAcceleration
+    float _radialAccelerationVariance;              // radialAccelerationVariance
+    float _tangentialAcceleration;                  // tangentialAcceleration
+    float _tangentialAccelerationVariance;          // tangentialAccelerationVariance
+    
+    // radial configuration
+    float _maxRadius;                               // maxRadius
+    float _maxRadiusVariance;                       // maxRadiusVariance
+    float _minRadius;                               // minRadius
+    float _rotatePerSecond;                         // rotatePerSecond
+    float _rotatePerSecondVariance;                 // rotatePerSecondVariance
+    
+    // color configuration
+    SXColor4f _startColor;                          // startColor
+    SXColor4f _startColorVariance;                  // startColorVariance
+    SXColor4f _endColor;                            // finishColor
+    SXColor4f _endColorVariance;                    // finishColorVariance
+    
+    // blend function
+    int _blendFuncSource;                           // blendFuncSource
+    int _blendFuncDestination;                      // blendFuncDestination
+}
 
-@synthesize numParticles = mNumParticles;
-@synthesize texture = mTexture;
-@synthesize scaleFactor = mScaleFactor;
-@synthesize startColor = mStartColor;
-@synthesize startColorVariance = mStartColorVariance;
-@synthesize endColor = mEndColor;
-@synthesize endColorVariance = mEndColorVariance;
-@synthesize emitterType = mEmitterType;
-@synthesize emitterX = mEmitterX;
-@synthesize emitterY = mEmitterY;
-@synthesize emitterXVariance = mEmitterXVariance;
-@synthesize emitterYVariance = mEmitterYVariance;
-@synthesize maxNumParticles = mMaxNumParticles;
-@synthesize lifespan = mLifespan;
-@synthesize lifespanVariance = mLifespanVariance;
-@synthesize startSize = mStartSize;
-@synthesize startSizeVariance = mStartSizeVariance;
-@synthesize endSize = mEndSize;
-@synthesize endSizeVariance = mEndSizeVariance;
-@synthesize emitAngle = mEmitAngle;
-@synthesize emitAngleVariance = mEmitAngleVariance;
-@synthesize speed = mSpeed;
-@synthesize speedVariance = mSpeedVariance;
-@synthesize gravityX = mGravityX;
-@synthesize gravityY = mGravityY;
-@synthesize radialAcceleration = mRadialAcceleration;
-@synthesize radialAccelerationVariance = mRadialAccelerationVariance;
-@synthesize tangentialAcceleration = mTangentialAcceleration;
-@synthesize tangentialAccelerationVariance = mTangentialAccelerationVariance;
-@synthesize maxRadius = mMaxRadius;
-@synthesize maxRadiusVariance = mMaxRadiusVariance;
-@synthesize minRadius = mMinRadius;
-@synthesize rotatePerSecond = mRotatePerSecond;
-@synthesize rotatePerSecondVariance = mRotatePerSecondVariance;
-@synthesize blendFuncSource = mBlendFuncSource;
-@synthesize blendFuncDestination = mBlendFuncDestination;
+@synthesize numParticles = _numParticles;
+@synthesize texture = _texture;
+@synthesize scaleFactor = _scaleFactor;
+@synthesize startColor = _startColor;
+@synthesize startColorVariance = _startColorVariance;
+@synthesize endColor = _endColor;
+@synthesize endColorVariance = _endColorVariance;
+@synthesize emitterType = _emitterType;
+@synthesize emitterX = _emitterX;
+@synthesize emitterY = _emitterY;
+@synthesize emitterXVariance = _emitterXVariance;
+@synthesize emitterYVariance = _emitterYVariance;
+@synthesize maxNumParticles = _maxNumParticles;
+@synthesize lifespan = _lifespan;
+@synthesize lifespanVariance = _lifespanVariance;
+@synthesize startSize = _startSize;
+@synthesize startSizeVariance = _startSizeVariance;
+@synthesize endSize = _endSize;
+@synthesize endSizeVariance = _endSizeVariance;
+@synthesize emitAngle = _emitAngle;
+@synthesize emitAngleVariance = _emitAngleVariance;
+@synthesize speed = _speed;
+@synthesize speedVariance = _speedVariance;
+@synthesize gravityX = _gravityX;
+@synthesize gravityY = _gravityY;
+@synthesize radialAcceleration = _radialAcceleration;
+@synthesize radialAccelerationVariance = _radialAccelerationVariance;
+@synthesize tangentialAcceleration = _tangentialAcceleration;
+@synthesize tangentialAccelerationVariance = _tangentialAccelerationVariance;
+@synthesize maxRadius = _maxRadius;
+@synthesize maxRadiusVariance = _maxRadiusVariance;
+@synthesize minRadius = _minRadius;
+@synthesize rotatePerSecond = _rotatePerSecond;
+@synthesize rotatePerSecondVariance = _rotatePerSecondVariance;
+@synthesize blendFuncSource = _blendFuncSource;
+@synthesize blendFuncDestination = _blendFuncDestination;
 
 - (id)initWithTexture:(SPTexture *)texture
 {
     if ((self = [super init]))
     {
-        mTexture = [texture retain];
+        _texture = texture;
+        _quadBatch = [[SPQuadBatch alloc] init];
         
         // choose some useful defaults, just in case no config file is used
-        mMaxNumParticles = 32;
-        mEmitterType = SXParticleEmitterTypeGravity;
-        mStartColor = (SXColor4f){ 1.0f, 1.0f, 1.0f, 1.0f };
-        mEndColor   = (SXColor4f){ 0.0f, 0.0f, 0.0f, 0.0f };
-        mLifespan = 1.0f;
-        mStartSize = texture ? texture.width : 32;
-        mEmitAngleVariance = PI / 8.0f;
-        mSpeed = 256;
-        mSpeedVariance = 64;
-        mBlendFuncSource = GL_ONE;
-        mBlendFuncDestination = GL_ONE_MINUS_SRC_ALPHA;
-        mScaleFactor = [SPStage contentScaleFactor];
-        
-        mParticles = malloc(sizeof(SXParticle) * mMaxNumParticles);
-        mPointSprites = malloc(sizeof(SXPointSprite) * mMaxNumParticles);
+        _maxNumParticles = 32;
+        _emitterType = SXParticleEmitterTypeGravity;
+        _startColor = (SXColor4f){ 1.0f, 1.0f, 1.0f, 1.0f };
+        _endColor   = (SXColor4f){ 0.0f, 0.0f, 0.0f, 0.0f };
+        _lifespan = 1.0f;
+        _startSize = texture ? texture.width : 32;
+        _emitAngleVariance = PI / 8.0f;
+        _speed = 256;
+        _speedVariance = 64;
+        _blendFuncSource = GL_ONE;
+        _blendFuncDestination = GL_ONE_MINUS_SRC_ALPHA;
+        _scaleFactor = Sparrow.contentScaleFactor;
+        _particles = malloc(sizeof(SXParticle) * _maxNumParticles);
     }
     return self;
 }
@@ -132,118 +189,122 @@
 
 + (id)particleSystemWithContentsOfFile:(NSString *)filename
 {
-    return [[[self alloc] initWithContentsOfFile:filename] autorelease];
+    return [[self alloc] initWithContentsOfFile:filename];
 }
 
 - (id)copyWithZone:(NSZone *)zone
 {
-    SXParticleSystem *copy = [[[self class] allocWithZone:zone] initWithTexture:mTexture];
-    copy.maxNumParticles = mMaxNumParticles;
+    SXParticleSystem *copy = [[[self class] allocWithZone:zone] initWithTexture:self.texture];
+    copy.maxNumParticles = _maxNumParticles;
     
-    copy->mEmitterType = mEmitterType;
-    copy->mEmitterX = mEmitterX;
-    copy->mEmitterXVariance = mEmitterXVariance;
-    copy->mEmitterY = mEmitterY;
-    copy->mEmitterYVariance = mEmitterYVariance;
-    copy->mMaxNumParticles = mMaxNumParticles;
-    copy->mLifespan = mLifespan;
-    copy->mLifespanVariance = mLifespanVariance;
-    copy->mStartSize = mStartSize;
-    copy->mStartSizeVariance = mStartSizeVariance;
-    copy->mEndSize = mEndSize;
-    copy->mEndSizeVariance = mEndSizeVariance;
-    copy->mEmitAngle = mEmitAngle;
-    copy->mEmitAngleVariance = mEmitAngleVariance;
-    copy->mSpeed = mSpeed;
-    copy->mSpeedVariance = mSpeedVariance;
-    copy->mGravityX = mGravityX;
-    copy->mGravityY = mGravityY;
-    copy->mRadialAcceleration = mRadialAcceleration;
-    copy->mRadialAccelerationVariance = mRadialAccelerationVariance;
-    copy->mTangentialAcceleration = mTangentialAcceleration;
-    copy->mTangentialAccelerationVariance = mTangentialAccelerationVariance;
-    copy->mMaxRadius = mMaxRadius;
-    copy->mMaxRadiusVariance = mMaxRadiusVariance;
-    copy->mMinRadius = mMinRadius;
-    copy->mRotatePerSecond = mRotatePerSecond;
-    copy->mRotatePerSecondVariance = mRotatePerSecondVariance;
-    copy->mStartColor = mStartColor;
-    copy->mStartColorVariance = mStartColorVariance;
-    copy->mEndColor = mEndColor;
-    copy->mEndColorVariance = mEndColorVariance;
-    copy->mBlendFuncSource = mBlendFuncSource;
-    copy->mBlendFuncDestination = mBlendFuncDestination;
+    copy->_emitterType = _emitterType;
+    copy->_emitterX = _emitterX;
+    copy->_emitterXVariance = _emitterXVariance;
+    copy->_emitterY = _emitterY;
+    copy->_emitterYVariance = _emitterYVariance;
+    copy->_maxNumParticles = _maxNumParticles;
+    copy->_lifespan = _lifespan;
+    copy->_lifespanVariance = _lifespanVariance;
+    copy->_startSize = _startSize;
+    copy->_startSizeVariance = _startSizeVariance;
+    copy->_endSize = _endSize;
+    copy->_endSizeVariance = _endSizeVariance;
+    copy->_emitAngle = _emitAngle;
+    copy->_emitAngleVariance = _emitAngleVariance;
+    copy->_speed = _speed;
+    copy->_speedVariance = _speedVariance;
+    copy->_gravityX = _gravityX;
+    copy->_gravityY = _gravityY;
+    copy->_radialAcceleration = _radialAcceleration;
+    copy->_radialAccelerationVariance = _radialAccelerationVariance;
+    copy->_tangentialAcceleration = _tangentialAcceleration;
+    copy->_tangentialAccelerationVariance = _tangentialAccelerationVariance;
+    copy->_maxRadius = _maxRadius;
+    copy->_maxRadiusVariance = _maxRadiusVariance;
+    copy->_minRadius = _minRadius;
+    copy->_rotatePerSecond = _rotatePerSecond;
+    copy->_rotatePerSecondVariance = _rotatePerSecondVariance;
+    copy->_startColor = _startColor;
+    copy->_startColorVariance = _startColorVariance;
+    copy->_endColor = _endColor;
+    copy->_endColorVariance = _endColorVariance;
+    copy->_blendFuncSource = _blendFuncSource;
+    copy->_blendFuncDestination = _blendFuncDestination;
     
     return copy;
 }
 
 - (void)dealloc
 {
-    if (mVertexBuffer)
-        glDeleteBuffers(1, &mVertexBuffer);
-    
-    free(mParticles);
-    free(mPointSprites);
-    
-    [mTexture release];
-    [mPath release];
-    
-    [super dealloc];
+    free(_particles);
 }
 
 - (void)advanceTime:(double)passedTime
 {
     // advance existing particles
     
-    int particleIndex = 0;    
-    while (particleIndex < mNumParticles)
+    int particleIndex = 0;
+    while (particleIndex < _numParticles)
     {
         // get the particle for the current particle index
-        SXParticle *currentParticle = &mParticles[particleIndex];
+        SXParticle *currentParticle = &_particles[particleIndex];
         
         // if the current particle is alive then update it
-        if (currentParticle->timeToLive > passedTime) 
+        if (currentParticle->timeToLive > passedTime)
         {
             [self advanceParticle:currentParticle byTime:passedTime];
             particleIndex++;
-        } 
-        else 
-        {            
-            if (particleIndex != mNumParticles - 1)
-                mParticles[particleIndex] = mParticles[mNumParticles - 1];
+        }
+        else
+        {
+            if (particleIndex != _numParticles - 1)
+                _particles[particleIndex] = _particles[_numParticles - 1];
             
-            mNumParticles--;
+            _numParticles--;
             
-            if (!mNumParticles)
+            if (!_numParticles)
                 [self dispatchEvent:[SPEvent eventWithType:@"complete"]];
         }
     }
     
     // create and advance new particles
     
-    if (mBurstTime > 0)
+    if (_burstTime > 0)
     {
-        float timeBetweenParticles = mLifespan / mMaxNumParticles;   
-        mFrameTime += passedTime;
-        while (mFrameTime > 0)
+        float timeBetweenParticles = _lifespan / _maxNumParticles;
+        _frameTime += passedTime;
+        while (_frameTime > 0)
         {
-            [self addParticleWithElapsedTime:mFrameTime];
-            mFrameTime -= timeBetweenParticles;
+            [self addParticleWithElapsedTime:_frameTime];
+            _frameTime -= timeBetweenParticles;
         }
         
-        if (mBurstTime != DBL_MAX)
-            mBurstTime = MAX(0.0, mBurstTime - passedTime);
+        if (_burstTime != DBL_MAX)
+            _burstTime = MAX(0.0, _burstTime - passedTime);
     }
     
-    // update point sprites data (except color, which is updated in 'render:')
+    // update quad batch
     
-    for (int i=0; i<mNumParticles; ++i)
-    {    
-        SXParticle *particle = &mParticles[i];
-        SXPointSprite *pointSprite = &mPointSprites[i];
-        pointSprite->x = particle->x;
-        pointSprite->y = particle->y;
-        pointSprite->size = MAX(0, particle->size);
+    [_quadBatch reset];
+    float baseSize = _texture.width;
+    
+    if (!_particleImage)
+        _particleImage = [[SPImage alloc] initWithTexture:_texture];
+    
+    for (int i=0; i<_numParticles; ++i)
+    {
+        SXParticle particle = _particles[i];
+        SXColor4f color = particle.color;
+        
+        _particleImage.x = particle.x;
+        _particleImage.y = particle.y;
+        _particleImage.scaleX = _particleImage.scaleY = MAX(0.0f, particle.size / baseSize);
+        _particleImage.alpha = color.alpha;
+        _particleImage.color = SP_COLOR(SP_CLAMP(color.red,   0.0f, 1.0f) * 255,
+                                        SP_CLAMP(color.green, 0.0f, 1.0f) * 255,
+                                        SP_CLAMP(color.blue,  0.0f, 1.0f) * 255);
+        
+        [_quadBatch addQuad:_particleImage];
     }
 }
 
@@ -252,20 +313,20 @@
     passedTime = MIN(passedTime, particle->timeToLive);
     particle->timeToLive -= passedTime;
     
-    if (mEmitterType == SXParticleEmitterTypeRadial) 
+    if (_emitterType == SXParticleEmitterTypeRadial)
     {
         particle->rotation += particle->rotationDelta * passedTime;
         particle->radius   -= particle->radiusDelta   * passedTime;
-        particle->x = mEmitterX - cosf(particle->rotation) * particle->radius;
-        particle->y = mEmitterY - sinf(particle->rotation) * particle->radius;
+        particle->x = _emitterX - cosf(particle->rotation) * particle->radius;
+        particle->y = _emitterY - sinf(particle->rotation) * particle->radius;
         
-        if (particle->radius < mMinRadius)
-            particle->timeToLive = 0;                
-    } 
-    else 
+        if (particle->radius < _minRadius)
+            particle->timeToLive = 0;
+    }
+    else
     {
         float distanceX = particle->x - particle->startX;
-        float distanceY = particle->y - particle->startY;                
+        float distanceY = particle->y - particle->startY;
         float distanceScalar = MAX(0.01f, sqrtf(SQ(distanceX) + SQ(distanceY)));
         
         float radialX = distanceX / distanceScalar;
@@ -280,8 +341,8 @@
         tangentialX = -tangentialY * particle->tangentialAcceleration;
         tangentialY = newY * particle->tangentialAcceleration;
         
-        particle->velocityX += passedTime * (mGravityX + radialX + tangentialX);
-        particle->velocityY += passedTime * (mGravityY + radialY + tangentialY);
+        particle->velocityX += passedTime * (_gravityX + radialX + tangentialX);
+        particle->velocityY += passedTime * (_gravityY + radialY + tangentialY);
         particle->x += particle->velocityX * passedTime;
         particle->y += particle->velocityY * passedTime;
     }
@@ -296,42 +357,42 @@
 }
 
 - (void)addParticleWithElapsedTime:(double)time
-{    
-    if (mNumParticles >= mMaxNumParticles)
+{
+    if (_numParticles >= _maxNumParticles)
         return;
     
-    float lifespan = RANDOM_VARIANCE(mLifespan, mLifespanVariance);
-    if (lifespan <= 0.0f) 
+    float lifespan = RANDOM_VARIANCE(_lifespan, _lifespanVariance);
+    if (lifespan <= 0.0f)
         return;
     
-    SXParticle *particle = &mParticles[mNumParticles++];
+    SXParticle *particle = &_particles[_numParticles++];
     particle->timeToLive = lifespan;
     
-    particle->x = RANDOM_VARIANCE(mEmitterX, mEmitterXVariance);
-    particle->y = RANDOM_VARIANCE(mEmitterY, mEmitterYVariance);
-    particle->startX = mEmitterX;
-    particle->startY = mEmitterY;
+    particle->x = RANDOM_VARIANCE(_emitterX, _emitterXVariance);
+    particle->y = RANDOM_VARIANCE(_emitterY, _emitterYVariance);
+    particle->startX = _emitterX;
+    particle->startY = _emitterY;
     
-    float angle = RANDOM_VARIANCE(mEmitAngle, mEmitAngleVariance);
-    float speed = RANDOM_VARIANCE(mSpeed, mSpeedVariance);
+    float angle = RANDOM_VARIANCE(_emitAngle, _emitAngleVariance);
+    float speed = RANDOM_VARIANCE(_speed, _speedVariance);
     particle->velocityX = speed * cosf(angle);
     particle->velocityY = speed * sinf(angle);
     
-    particle->radius = RANDOM_VARIANCE(mMaxRadius, mMaxRadiusVariance);
-    particle->radiusDelta = mMaxRadius / lifespan;
-    particle->rotation = RANDOM_VARIANCE(mEmitAngle, mEmitAngleVariance);
-    particle->rotationDelta = RANDOM_VARIANCE(mRotatePerSecond, mRotatePerSecondVariance);    
-    particle->radialAcceleration = RANDOM_VARIANCE(mRadialAcceleration, mRadialAccelerationVariance);
-    particle->tangentialAcceleration = RANDOM_VARIANCE(mTangentialAcceleration, mTangentialAccelerationVariance);
+    particle->radius = RANDOM_VARIANCE(_maxRadius, _maxRadiusVariance);
+    particle->radiusDelta = _maxRadius / lifespan;
+    particle->rotation = RANDOM_VARIANCE(_emitAngle, _emitAngleVariance);
+    particle->rotationDelta = RANDOM_VARIANCE(_rotatePerSecond, _rotatePerSecondVariance);
+    particle->radialAcceleration = RANDOM_VARIANCE(_radialAcceleration, _radialAccelerationVariance);
+    particle->tangentialAcceleration = RANDOM_VARIANCE(_tangentialAcceleration, _tangentialAccelerationVariance);
     
-    float particleStartSize  = MAX(0.1f, RANDOM_VARIANCE(mStartSize, mStartSizeVariance));
-    float particleFinishSize = MAX(0.1f, RANDOM_VARIANCE(mEndSize, mEndSizeVariance)); 
+    float particleStartSize  = MAX(0.1f, RANDOM_VARIANCE(_startSize, _startSizeVariance));
+    float particleFinishSize = MAX(0.1f, RANDOM_VARIANCE(_endSize, _endSizeVariance));
     particle->size = particleStartSize;
     particle->sizeDelta = (particleFinishSize - particleStartSize) / lifespan;
     
-    SXColor4f startColor = RANDOM_COLOR_VARIANCE(mStartColor, mStartColorVariance);
-    SXColor4f endColor   = RANDOM_COLOR_VARIANCE(mEndColor,   mEndColorVariance);
-
+    SXColor4f startColor = RANDOM_COLOR_VARIANCE(_startColor, _startColorVariance);
+    SXColor4f endColor   = RANDOM_COLOR_VARIANCE(_endColor,   _endColorVariance);
+    
     SXColor4f colorDelta;
     colorDelta.red   = (endColor.red   - startColor.red)   / lifespan;
     colorDelta.green = (endColor.green - startColor.green) / lifespan;
@@ -346,59 +407,10 @@
 
 - (void)render:(SPRenderSupport *)support
 {
-    if (mNumParticles == 0) return;
+    // TODO: blending!
+    // glBlendFunc(_blendFuncSource, _blendFuncDestination);
     
-    float alpha = self.alpha;
-    [support bindTexture:mTexture];
-    
-    // we need to know the scale value in respect to the stage
-    SPDisplayObject *object = self;
-    float totalScale = mScaleFactor;
-    while (object) { totalScale *= object.scaleX; object = object.parent; }
-    
-    // update color and scale data
-    for (int i=0; i<mNumParticles; ++i)
-    {
-        mPointSprites[i].size = mParticles[i].size * totalScale;
-        SXColor4f pColor4f = mParticles[i].color;
-        mPointSprites[i].color = (GLubyte)(CLAMP(pColor4f.red,   0.0f, 1.0f) * 255) |
-                                 (GLubyte)(CLAMP(pColor4f.green, 0.0f, 1.0f) * 255) << 8 |
-                                 (GLubyte)(CLAMP(pColor4f.blue,  0.0f, 1.0f) * 255) << 16 |
-                                 (GLubyte)(CLAMP(pColor4f.alpha, 0.0f, 1.0f) * alpha * 255) << 24;
-    }
-    
-    if (!mVertexBuffer)
-        glGenBuffers(1, &mVertexBuffer);
-    
-    // update vertex buffer
-    glBindBuffer(GL_ARRAY_BUFFER, mVertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(SXPointSprite) * mMaxNumParticles, mPointSprites, GL_DYNAMIC_DRAW);
-    
-    // enable drawing states
-    glEnable(GL_POINT_SPRITE_OES);    
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glEnableClientState(GL_COLOR_ARRAY);  
-    glEnableClientState(GL_POINT_SIZE_ARRAY_OES);
-    
-    // point to specific data
-    glBlendFunc(mBlendFuncSource, mBlendFuncDestination);
-    glVertexPointer(2, GL_FLOAT, sizeof(SXPointSprite), 0);
-    glColorPointer(4, GL_UNSIGNED_BYTE, sizeof(SXPointSprite), (void *)offsetof(SXPointSprite, color));
-    glPointSizePointerOES(GL_FLOAT, sizeof(SXPointSprite), (void *)offsetof(SXPointSprite, size));
-    glTexEnvi(GL_POINT_SPRITE_OES, GL_COORD_REPLACE_OES, GL_TRUE);
-    
-    // draw particles!
-    glDrawArrays(GL_POINTS, 0, mNumParticles);
-    
-    glDisableClientState(GL_VERTEX_ARRAY);
-    glDisableClientState(GL_COLOR_ARRAY);   
-    glDisableClientState(GL_POINT_SIZE_ARRAY_OES);    
-    glDisable(GL_POINT_SPRITE_OES);
-    
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    
-    // reset blending function
-    [support reset];
+    [_quadBatch render:support];
 }
 
 - (void)start
@@ -408,12 +420,12 @@
 
 - (void)startBurst:(double)duration
 {
-    mBurstTime = fabs(duration);
+    _burstTime = fabs(duration);
 }
 
 - (void)stop
 {
-    mBurstTime = 0;
+    _burstTime = 0;
 }
 
 - (SPRectangle*)boundsInSpace:(SPDisplayObject*)targetCoordinateSpace
@@ -422,15 +434,9 @@
     // values for x and y.
     
     SPMatrix *transformationMatrix = [self transformationMatrixToSpace:targetCoordinateSpace];
-    SPPoint *point = [SPPoint pointWithX:0.0f y:0.0f];
-    SPPoint *transformedPoint = [transformationMatrix transformPoint:point];
-    return [SPRectangle rectangleWithX:transformedPoint.x y:transformedPoint.y 
+    SPPoint *transformedPoint = [transformationMatrix transformPointWithX:0.0f y:0.0f];
+    return [SPRectangle rectangleWithX:transformedPoint.x y:transformedPoint.y
                                  width:0.0f height:0.0f];
-}
-
-- (BOOL)isComplete
-{
-    return NO;
 }
 
 #pragma mark XML parsing
@@ -439,116 +445,104 @@
 {
     if (!path) return;
     
-    float scaleFactor = [SPStage contentScaleFactor];
-    mPath = [[SPUtils absolutePathToFile:path withScaleFactor:scaleFactor] retain];    
-    if (!mPath) [NSException raise:SP_EXC_FILE_NOT_FOUND format:@"file not found: %@", path];
+    float scaleFactor = Sparrow.contentScaleFactor;
+    _path = [SPUtils absolutePathToFile:path withScaleFactor:scaleFactor];
+    if (!_path) [NSException raise:SP_EXC_FILE_NOT_FOUND format:@"file not found: %@", path];
     
-    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSData *xmlData = [[NSData alloc] initWithContentsOfFile:_path];
+    NSXMLParser *parser = [[NSXMLParser alloc] initWithData:xmlData];
     
-    NSData *xmlData = [[NSData alloc] initWithContentsOfFile:mPath];
-    NSXMLParser *xmlParser = [[NSXMLParser alloc] initWithData:xmlData];
-    [xmlData release];
-    
-    xmlParser.delegate = self;    
-    BOOL success = [xmlParser parse];
-    
-    [pool release];
-    
-    if (!success)    
-        [NSException raise:SP_EXC_FILE_INVALID 
-                    format:@"could not parse emitter configuration %@. Error code: %d, domain: %@", 
-         path, xmlParser.parserError.code, xmlParser.parserError.domain];
-    
-    [xmlParser release];
-}
-
-- (void)parser:(NSXMLParser *)parser didStartElement:(NSString *)elementName 
-  namespaceURI:(NSString *)namespaceURI 
- qualifiedName:(NSString *)qName 
-    attributes:(NSDictionary *)attributeDict 
-{
-    elementName = [elementName lowercaseString];
-    
-    if (!mTexture && [elementName isEqualToString:@"texture"])
+    BOOL success = [parser parseElementsWithBlock:^(NSString *elementName, NSDictionary *attributes)
     {
-        NSString *b64Data = [attributeDict valueForKey:@"data"];
-        if (b64Data)
+        elementName = [elementName lowercaseString];
+        
+        if (!_texture && [elementName isEqualToString:@"texture"])
         {
-            NSData *imageData = [[NSData dataWithBase64EncodedString:b64Data] gzipInflate];
-            mTexture = [[SPTexture alloc] initWithContentsOfImage:[UIImage imageWithData:imageData]];
+            NSString *b64Data = [attributes valueForKey:@"data"];
+            if (b64Data)
+            {
+                NSData *imageData = [[NSData dataWithBase64EncodedString:b64Data] gzipInflate];
+                _texture = [[SPTexture alloc] initWithContentsOfImage:[UIImage imageWithData:imageData]];
+            }
+            else
+            {
+                NSString *filename = [attributes valueForKey:@"name"];
+                NSString *folder = [_path stringByDeletingLastPathComponent];
+                NSString *absolutePath = [folder stringByAppendingPathComponent:filename];
+                _texture = [[SPTexture alloc] initWithContentsOfFile:absolutePath];
+            }
         }
-        else
+        else if ([elementName isEqualToString:@"sourcepositionvariance"])
         {
-            NSString *filename = [attributeDict valueForKey:@"name"];
-            NSString *folder = [mPath stringByDeletingLastPathComponent];
-            NSString *absolutePath = [folder stringByAppendingPathComponent:filename];
-            mTexture = [[SPTexture alloc] initWithContentsOfFile:absolutePath];
+            _emitterXVariance = [[attributes objectForKey:@"x"] floatValue];
+            _emitterYVariance = [[attributes objectForKey:@"y"] floatValue];
         }
-    }
-    else if ([elementName isEqualToString:@"sourcepositionvariance"])
-    {
-        mEmitterXVariance = [[attributeDict objectForKey:@"x"] floatValue];
-        mEmitterYVariance = [[attributeDict objectForKey:@"y"] floatValue];
-    }
-    else if ([elementName isEqualToString:@"gravity"])
-    {
-        mGravityX = [[attributeDict objectForKey:@"x"] floatValue];
-        mGravityY = [[attributeDict objectForKey:@"y"] floatValue];        
-    }
-    else if ([elementName isEqualToString:@"emittertype"])
-        mEmitterType = (SXParticleEmitterType)[[attributeDict objectForKey:@"value"] intValue];
-    else if ([elementName isEqualToString:@"maxparticles"])
-        self.maxNumParticles = [[attributeDict objectForKey:@"value"] floatValue];    
-    else if ([elementName isEqualToString:@"particlelifespan"])
-        self.lifespan = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"particlelifespanvariance"])
-        mLifespanVariance = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"startparticlesize"])
-        mStartSize = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"startparticlesizevariance"])
-        mStartSizeVariance = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"finishparticlesize"])
-        mEndSize = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"finishparticlesizevariance"])
-        mEndSizeVariance = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"angle"])
-        mEmitAngle = SP_D2R([[attributeDict objectForKey:@"value"] floatValue]);
-    else if ([elementName isEqualToString:@"anglevariance"])
-        mEmitAngleVariance = SP_D2R([[attributeDict objectForKey:@"value"] floatValue]);
-    else if ([elementName isEqualToString:@"speed"])
-        mSpeed = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"speedvariance"])
-        mSpeedVariance = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"radialacceleration"])
-        mRadialAcceleration = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"radialaccelvariance"])
-        mRadialAccelerationVariance = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"tangentialacceleration"])
-        mTangentialAcceleration = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"tangentialaccelvariance"])
-        mTangentialAccelerationVariance = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"maxradius"])
-        mMaxRadius = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"maxradiusvariance"])
-        mMaxRadiusVariance = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"minradius"])
-        mMinRadius = [[attributeDict objectForKey:@"value"] floatValue];
-    else if ([elementName isEqualToString:@"rotatepersecond"])
-        mRotatePerSecond = SP_D2R([[attributeDict objectForKey:@"value"] floatValue]);
-    else if ([elementName isEqualToString:@"rotatepersecondvariance"])
-        mRotatePerSecondVariance = SP_D2R([[attributeDict objectForKey:@"value"] floatValue]);
-    else if ([elementName isEqualToString:@"startcolor"])
-        mStartColor = [self colorFromDictionary:attributeDict];
-    else if ([elementName isEqualToString:@"startcolorvariance"])
-        mStartColorVariance = [self colorFromDictionary:attributeDict];
-    else if ([elementName isEqualToString:@"finishcolor"])
-        mEndColor = [self colorFromDictionary:attributeDict];
-    else if ([elementName isEqualToString:@"finishcolorvariance"])
-        mEndColorVariance = [self colorFromDictionary:attributeDict];
-    else if ([elementName isEqualToString:@"blendfuncsource"])
-        mBlendFuncSource = [[attributeDict objectForKey:@"value"] intValue];
-    else if ([elementName isEqualToString:@"blendfuncdestination"])
-        mBlendFuncDestination = [[attributeDict objectForKey:@"value"] intValue];    
+        else if ([elementName isEqualToString:@"gravity"])
+        {
+            _gravityX = [[attributes objectForKey:@"x"] floatValue];
+            _gravityY = [[attributes objectForKey:@"y"] floatValue];
+        }
+        else if ([elementName isEqualToString:@"emittertype"])
+            _emitterType = (SXParticleEmitterType)[[attributes objectForKey:@"value"] intValue];
+        else if ([elementName isEqualToString:@"maxparticles"])
+            self.maxNumParticles = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"particlelifespan"])
+            self.lifespan = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"particlelifespanvariance"])
+            _lifespanVariance = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"startparticlesize"])
+            _startSize = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"startparticlesizevariance"])
+            _startSizeVariance = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"finishparticlesize"])
+            _endSize = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"finishparticlesizevariance"])
+            _endSizeVariance = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"angle"])
+            _emitAngle = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
+        else if ([elementName isEqualToString:@"anglevariance"])
+            _emitAngleVariance = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
+        else if ([elementName isEqualToString:@"speed"])
+            _speed = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"speedvariance"])
+            _speedVariance = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"radialacceleration"])
+            _radialAcceleration = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"radialaccelvariance"])
+            _radialAccelerationVariance = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"tangentialacceleration"])
+            _tangentialAcceleration = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"tangentialaccelvariance"])
+            _tangentialAccelerationVariance = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"maxradius"])
+            _maxRadius = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"maxradiusvariance"])
+            _maxRadiusVariance = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"minradius"])
+            _minRadius = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"rotatepersecond"])
+            _rotatePerSecond = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
+        else if ([elementName isEqualToString:@"rotatepersecondvariance"])
+            _rotatePerSecondVariance = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
+        else if ([elementName isEqualToString:@"startcolor"])
+            _startColor = [self colorFromDictionary:attributes];
+        else if ([elementName isEqualToString:@"startcolorvariance"])
+            _startColorVariance = [self colorFromDictionary:attributes];
+        else if ([elementName isEqualToString:@"finishcolor"])
+            _endColor = [self colorFromDictionary:attributes];
+        else if ([elementName isEqualToString:@"finishcolorvariance"])
+            _endColorVariance = [self colorFromDictionary:attributes];
+        else if ([elementName isEqualToString:@"blendfuncsource"])
+            _blendFuncSource = [[attributes objectForKey:@"value"] intValue];
+        else if ([elementName isEqualToString:@"blendfuncdestination"])
+            _blendFuncDestination = [[attributes objectForKey:@"value"] intValue];
+    }];
+    
+    if (!success)
+        [NSException raise:SP_EXC_FILE_INVALID
+                    format:@"could not parse emitter configuration %@. Error code: %d, domain: %@",
+         path, parser.parserError.code, parser.parserError.domain];
+    
 }
 
 - (SXColor4f)colorFromDictionary:(NSDictionary *)dictionary
@@ -563,15 +557,24 @@
 
 - (void)setLifespan:(float)value
 {
-    mLifespan = MAX(0.01, value);
+    _lifespan = MAX(0.01, value);
 }
 
 - (void)setMaxNumParticles:(int)value
 {
-    mMaxNumParticles = value;
-    mNumParticles = MIN(mMaxNumParticles, mNumParticles);
-    mParticles = realloc(mParticles, sizeof(SXParticle) * value);
-    mPointSprites = realloc(mPointSprites, sizeof(SXPointSprite) * value);
+    _maxNumParticles = value;
+    _numParticles = MIN(_maxNumParticles, _numParticles);
+    _particles = realloc(_particles, sizeof(SXParticle) * value);
+}
+
+- (void)setTexture:(SPTexture *)texture
+{
+    if (_texture != texture)
+    {
+        _texture = texture;
+        _particleImage.texture = texture;
+        [_particleImage readjustSize];
+    }
 }
 
 @end

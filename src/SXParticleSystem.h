@@ -14,112 +14,32 @@
 
 // --- structs & enums -----------------------------------------------------------------------------
 
-typedef enum 
+typedef enum
 {
     SXParticleEmitterTypeGravity,
     SXParticleEmitterTypeRadial
 } SXParticleEmitterType;
 
-typedef struct {
+typedef struct
+{
     float red;
     float green;
     float blue;
     float alpha;
 } SXColor4f;
 
-typedef struct 
-{
-    float x, y;
-    float size;
-    uint color;
-} SXPointSprite;
-
-typedef struct
-{
-    SXColor4f color, colorDelta;
-    float x, y;
-    float startX, startY;
-    float velocityX, velocityY;
-    float radialAcceleration;
-    float tangentialAcceleration;
-    float radius, radiusDelta;
-    float rotation, rotationDelta;
-    float size, sizeDelta;    
-    float timeToLive;
-} SXParticle;
-
 /** ------------------------------------------------------------------------------------------------
  
  This class provices an easy way to display particle systems.
-
- Particle Systems can be used to create special effects like explosions, smoke, snow, fire, etc. 
- The system is controlled by a configuration file in the format that is created by 
- [Particle Designer](http://particledesigner.71squared.com). While you don't need that tool to 
+ 
+ Particle Systems can be used to create special effects like explosions, smoke, snow, fire, etc.
+ The system is controlled by a configuration file in the format that is created by
+ [Particle Designer](http://particledesigner.71squared.com). While you don't need that tool to
  create particle systems, it makes designing them much easier.
+ 
+ ------------------------------------------------------------------------------------------------- */
 
-------------------------------------------------------------------------------------------------- */
-
-@interface SXParticleSystem : SPDisplayObject <SPAnimatable, NSXMLParserDelegate>
-{
-  @private                                          // .pex element name
-     
-    SPTexture *mTexture;
-    NSString *mPath;            
-    double mBurstTime;
-    double mFrameTime;
-    int mNumParticles;
-    float mScaleFactor;
-    
-    uint mVertexBuffer;
-    SXParticle *mParticles;
-    SXPointSprite *mPointSprites;
-    
-    // emitter configuration
-    SXParticleEmitterType mEmitterType;             // emitterType
-    float mEmitterX;                                // sourcePosition x (ignored)
-    float mEmitterY;                                // sourcePosition y (ignored)
-    float mEmitterXVariance;                        // sourcePositionVariance x
-    float mEmitterYVariance;                        // sourcePositionVariance y
-    
-    // particle configuration
-    int mMaxNumParticles;                           // maxParticles
-    float mLifespan;                                // particleLifeSpan
-    float mLifespanVariance;                        // particleLifeSpanVariance
-    float mStartSize;                               // startParticleSize
-    float mStartSizeVariance;                       // startParticleSizeVariance
-    float mEndSize;                                 // finishParticleSize
-    float mEndSizeVariance;                         // finishParticleSize
-    float mEmitAngle;                               // angle
-    float mEmitAngleVariance;                       // angleVariance
-    // [rotation not supported!]
-    
-    // gravity configuration
-    float mSpeed;                                   // speed
-    float mSpeedVariance;                           // speedVariance
-    float mGravityX;                                // gravity x
-    float mGravityY;                                // gravity y
-    float mRadialAcceleration;                      // radialAcceleration
-    float mRadialAccelerationVariance;              // radialAccelerationVariance
-    float mTangentialAcceleration;                  // tangentialAcceleration
-    float mTangentialAccelerationVariance;          // tangentialAccelerationVariance
-    
-    // radial configuration 
-    float mMaxRadius;                               // maxRadius
-    float mMaxRadiusVariance;                       // maxRadiusVariance
-    float mMinRadius;                               // minRadius
-    float mRotatePerSecond;                         // rotatePerSecond
-    float mRotatePerSecondVariance;                 // rotatePerSecondVariance
-    
-    // color configuration
-    SXColor4f mStartColor;                          // startColor
-    SXColor4f mStartColorVariance;                  // startColorVariance
-    SXColor4f mEndColor;                            // finishColor
-    SXColor4f mEndColorVariance;                    // finishColorVariance
-
-    // blend function
-    int mBlendFuncSource;                           // blendFuncSource
-    int mBlendFuncDestination;                      // blendFuncDestination
-}
+@interface SXParticleSystem : SPDisplayObject <SPAnimatable>
 
 /// ------------------
 /// @name Initializers
@@ -129,7 +49,7 @@ typedef struct
 /// _Designated Initializer_.
 - (id)initWithTexture:(SPTexture *)texture;
 
-/// Initialize a particle system from a configuration file, using a specific texture. 
+/// Initialize a particle system from a configuration file, using a specific texture.
 - (id)initWithContentsOfFile:(NSString *)filename texture:(SPTexture *)texture;
 
 /// Initialize a particle system from a configuration file, using the texture specified in the file.
@@ -159,7 +79,7 @@ typedef struct
 @property (nonatomic, readonly) int numParticles;
 
 /// The particle texture.
-@property (nonatomic, readonly) SPTexture *texture;
+@property (nonatomic, strong) SPTexture *texture;
 
 /// The scale factor of the particles. Default: normal displays: 1, retina displays: 2.
 @property (nonatomic, assign) float scaleFactor;
@@ -204,7 +124,7 @@ typedef struct
 /// ----------------------------
 
 /// The maximum number of particles (capacity) of the system.
-@property (nonatomic, assign) int maxNumParticles; 
+@property (nonatomic, assign) int maxNumParticles;
 
 /// The life span of a particle in seconds.
 @property (nonatomic, assign) float lifespan;
@@ -222,7 +142,7 @@ typedef struct
 @property (nonatomic, assign) float endSize;
 
 /// The variance of the end size of a particle in points.
-@property (nonatomic, assign) float endSizeVariance; 
+@property (nonatomic, assign) float endSizeVariance;
 
 /// The angle in which new particles are emitted in radians.
 @property (nonatomic, assign) float emitAngle;
