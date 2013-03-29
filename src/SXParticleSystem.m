@@ -289,7 +289,7 @@ typedef struct
     float baseSize = _texture.width;
     
     if (!_particleImage)
-        _particleImage = [[SPImage alloc] initWithTexture:_texture];
+        [self updateParticleImage];
     
     for (int i=0; i<_numParticles; ++i)
     {
@@ -572,9 +572,22 @@ typedef struct
     if (_texture != texture)
     {
         _texture = texture;
-        _particleImage.texture = texture;
+        [self updateParticleImage];
+    }
+}
+
+- (void)updateParticleImage
+{
+    if (!_particleImage)
+        _particleImage = [[SPImage alloc] initWithTexture:_texture];
+    else
+    {
+        _particleImage.texture = _texture;
         [_particleImage readjustSize];
     }
+    
+    _particleImage.pivotX = (int)(_texture.width / 2.0f);
+    _particleImage.pivotY = (int)(_texture.height / 2.0f);
 }
 
 @end

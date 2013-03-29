@@ -18,7 +18,7 @@
         float height = Sparrow.stage.height;
         
         // create particle system
-        _particleSystem = [[SXParticleSystem alloc] initWithContentsOfFile:@"fire.pex"];
+        _particleSystem = [[SXParticleSystem alloc] initWithContentsOfFile:@"sun.pex"];
         _particleSystem.x = width / 2.0f;
         _particleSystem.y = height / 2.0f;
         
