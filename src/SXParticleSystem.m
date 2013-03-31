@@ -107,8 +107,8 @@ typedef struct
     SXColor4f _endColorVariance;                    // finishColorVariance
     
     // blend function
-    int _blendFuncSource;                           // blendFuncSource
-    int _blendFuncDestination;                      // blendFuncDestination
+    uint _blendFuncSource;                          // blendFuncSource
+    uint _blendFuncDestination;                     // blendFuncDestination
 }
 
 @synthesize numParticles = _numParticles;
@@ -169,6 +169,7 @@ typedef struct
         _blendFuncDestination = GL_ONE_MINUS_SRC_ALPHA;
         _scaleFactor = Sparrow.contentScaleFactor;
         _particles = malloc(sizeof(SXParticle) * _maxNumParticles);
+        [self updateBlendMode];
     }
     return self;
 }
@@ -407,9 +408,6 @@ typedef struct
 
 - (void)render:(SPRenderSupport *)support
 {
-    // TODO: blending!
-    // glBlendFunc(_blendFuncSource, _blendFuncDestination);
-    
     [_quadBatch render:support];
 }
 
@@ -543,6 +541,7 @@ typedef struct
                     format:@"could not parse emitter configuration %@. Error code: %d, domain: %@",
          path, parser.parserError.code, parser.parserError.domain];
     
+    [self updateBlendMode];
 }
 
 - (SXColor4f)colorFromDictionary:(NSDictionary *)dictionary
@@ -553,6 +552,24 @@ typedef struct
     color.blue  = [[dictionary objectForKey:@"blue"]  floatValue];
     color.alpha = [[dictionary objectForKey:@"alpha"] floatValue];
     return color;
+}
+
+- (void)updateBlendMode
+{
+    self.blendMode = [SPBlendMode encodeBlendModeWithSourceFactor:_blendFuncSource
+                                                       destFactor:_blendFuncDestination];
+}
+
+- (void)setBlendFuncSource:(uint)value
+{
+    _blendFuncSource = value;
+    [self updateBlendMode];
+}
+
+- (void)setBlendFuncDestination:(uint)value
+{
+    _blendFuncDestination = value;
+    [self updateBlendMode];
 }
 
 - (void)setLifespan:(float)value
@@ -586,6 +603,7 @@ typedef struct
         [_particleImage readjustSize];
     }
     
+    _particleImage.premultipliedAlpha = NO; // that's how the original PD rendering works!
     _particleImage.pivotX = (int)(_texture.width / 2.0f);
     _particleImage.pivotY = (int)(_texture.height / 2.0f);
 }

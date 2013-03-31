@@ -202,9 +202,9 @@ typedef struct
 /// --------------
 
 /// The source factor of the blending function.
-@property (nonatomic, assign) int blendFuncSource;
+@property (nonatomic, assign) uint blendFuncSource;
 
 /// The destination factor of the blending function.
-@property (nonatomic, assign) int blendFuncDestination;
+@property (nonatomic, assign) uint blendFuncDestination;
 
 @end
