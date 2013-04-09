@@ -62,7 +62,6 @@ typedef struct
     double _burstTime;
     double _frameTime;
     int _numParticles;
-    float _scaleFactor;
                                                     // .pex element name
     // emitter configuration
     SXParticleEmitterType _emitterType;             // emitterType
@@ -113,7 +112,6 @@ typedef struct
 
 @synthesize numParticles = _numParticles;
 @synthesize texture = _texture;
-@synthesize scaleFactor = _scaleFactor;
 @synthesize startColor = _startColor;
 @synthesize startColorVariance = _startColorVariance;
 @synthesize endColor = _endColor;
@@ -167,7 +165,6 @@ typedef struct
         _speedVariance = 64;
         _blendFuncSource = GL_ONE;
         _blendFuncDestination = GL_ONE_MINUS_SRC_ALPHA;
-        _scaleFactor = Sparrow.contentScaleFactor;
         _particles = malloc(sizeof(SXParticle) * _maxNumParticles);
         [self updateBlendMode];
     }
@@ -443,8 +440,7 @@ typedef struct
 {
     if (!path) return;
     
-    float scaleFactor = Sparrow.contentScaleFactor;
-    _path = [SPUtils absolutePathToFile:path withScaleFactor:scaleFactor];
+    _path = [SPUtils absolutePathToFile:path];
     if (!_path) [NSException raise:SP_EXC_FILE_NOT_FOUND format:@"file not found: %@", path];
     
     NSData *xmlData = [[NSData alloc] initWithContentsOfFile:_path];

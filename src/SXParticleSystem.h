@@ -81,9 +81,6 @@ typedef struct
 /// The particle texture.
 @property (nonatomic, strong) SPTexture *texture;
 
-/// The scale factor of the particles. Default: normal displays: 1, retina displays: 2.
-@property (nonatomic, assign) float scaleFactor;
-
 /// -------------------------
 /// @name Color configuration
 /// -------------------------
