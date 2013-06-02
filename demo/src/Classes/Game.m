@@ -34,7 +34,7 @@
     return self;
 }
 
-- (SPDisplayObject *)hitTestPoint:(SPPoint *)localPoint forTouch:(BOOL)isTouch
+- (SPDisplayObject *)hitTestPoint:(SPPoint *)localPoint
 {
     return self;
 }
