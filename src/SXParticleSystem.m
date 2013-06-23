@@ -261,7 +261,7 @@ typedef struct
             _numParticles--;
             
             if (!_numParticles)
-                [self dispatchEvent:[SPEvent eventWithType:@"complete"]];
+                [self dispatchEvent:[SPEvent eventWithType:SP_EVENT_TYPE_COMPLETED]];
         }
     }
     
