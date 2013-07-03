@@ -39,7 +39,7 @@ typedef struct
  
  ------------------------------------------------------------------------------------------------- */
 
-@interface SXParticleSystem : SPDisplayObject <SPAnimatable>
+@interface SXParticleSystem : SPQuadBatch <SPAnimatable>
 
 /// ------------------
 /// @name Initializers

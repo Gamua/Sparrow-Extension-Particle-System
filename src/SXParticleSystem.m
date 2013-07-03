@@ -55,7 +55,6 @@ typedef struct
 {
     SPImage *_particleImage;
     SPTexture *_texture;
-    SPQuadBatch *_quadBatch;
     SXParticle *_particles;
     
     NSString *_path;
@@ -148,10 +147,9 @@ typedef struct
 
 - (id)initWithTexture:(SPTexture *)texture
 {
-    if ((self = [super init]))
+    if ((self = [super initWithCapacity:32]))
     {
         _texture = texture;
-        _quadBatch = [[SPQuadBatch alloc] init];
         
         // choose some useful defaults, just in case no config file is used
         _maxNumParticles = 32;
@@ -260,7 +258,7 @@ typedef struct
             
             _numParticles--;
             
-            if (!_numParticles)
+            if (!_numParticles && _burstTime <= 0.0)
                 [self dispatchEvent:[SPEvent eventWithType:SP_EVENT_TYPE_COMPLETED]];
         }
     }
@@ -283,7 +281,7 @@ typedef struct
     
     // update quad batch
     
-    [_quadBatch reset];
+    [self reset];
     float baseSize = _texture.width;
     
     if (!_particleImage)
@@ -302,7 +300,7 @@ typedef struct
                                         SP_CLAMP(color.green, 0.0f, 1.0f) * 255,
                                         SP_CLAMP(color.blue,  0.0f, 1.0f) * 255);
         
-        [_quadBatch addQuad:_particleImage];
+        [self addQuad:_particleImage];
     }
 }
 
@@ -401,11 +399,6 @@ typedef struct
     particle->colorDelta = colorDelta;
     
     [self advanceParticle:particle byTime:time];
-}
-
-- (void)render:(SPRenderSupport *)support
-{
-    [_quadBatch render:support];
 }
 
 - (void)start
@@ -538,6 +531,7 @@ typedef struct
          path, parser.parserError.code, parser.parserError.domain];
     
     [self updateBlendMode];
+    [self updateParticleImage];
 }
 
 - (SXColor4f)colorFromDictionary:(NSDictionary *)dictionary
@@ -560,12 +554,14 @@ typedef struct
 {
     _blendFuncSource = value;
     [self updateBlendMode];
+    [self updateParticleImage];
 }
 
 - (void)setBlendFuncDestination:(uint)value
 {
     _blendFuncDestination = value;
     [self updateBlendMode];
+    [self updateParticleImage];
 }
 
 - (void)setLifespan:(float)value
@@ -602,6 +598,7 @@ typedef struct
     _particleImage.premultipliedAlpha = NO; // that's how the original PD rendering works!
     _particleImage.pivotX = (int)(_texture.width / 2.0f);
     _particleImage.pivotY = (int)(_texture.height / 2.0f);
+    _particleImage.blendMode = self.blendMode;
 }
 
 @end
