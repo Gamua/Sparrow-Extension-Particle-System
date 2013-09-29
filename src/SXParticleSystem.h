@@ -147,6 +147,18 @@ typedef struct
 /// The variance of the engle in which new particles are emitted in radians.
 @property (nonatomic, assign) float emitAngleVariance;
 
+/// The rotation of an individual particle when it's emitted.
+@property (nonatomic, assign) float startRotation;
+
+/// The variance of the rotation of an individual particle when it's emitted.
+@property (nonatomic, assign) float startRotationVariance;
+
+/// The rotation of an individual particle at the end of its lifespan.
+@property (nonatomic, assign) float endRotation;
+
+/// The variance of the rotation of an individual particle at the end of its lifespan.
+@property (nonatomic, assign) float endRotationVariance;
+
 /// ---------------------------
 /// @name Gravity configuration
 /// ---------------------------

@@ -23,7 +23,8 @@ typedef struct
     float velocityX, velocityY;
     float radialAcceleration;
     float tangentialAcceleration;
-    float radius, radiusDelta;
+    float emitRadius, emitRadiusDelta;
+    float emitRotation, emitRotationDelta;
     float rotation, rotationDelta;
     float size, sizeDelta;
     float timeToLive;
@@ -79,7 +80,10 @@ typedef struct
     float _endSizeVariance;                         // finishParticleSize
     float _emitAngle;                               // angle
     float _emitAngleVariance;                       // angleVariance
-    // [rotation not supported!]
+    float _startRotation;                           // rotationStart
+    float _startRotationVariance;                   // rotationStartVariance
+    float _endRotation;                             // rotationEnd
+    float _endRotationVariance;                     // rotationEndVariance
     
     // gravity configuration
     float _speed;                                   // speed
@@ -129,6 +133,10 @@ typedef struct
 @synthesize endSizeVariance = _endSizeVariance;
 @synthesize emitAngle = _emitAngle;
 @synthesize emitAngleVariance = _emitAngleVariance;
+@synthesize startRotation = _startRotation;
+@synthesize startRotationVariance = _startRotationVariance;
+@synthesize endRotation = _endRotation;
+@synthesize endRotationVariance = _endRotationVariance;
 @synthesize speed = _speed;
 @synthesize speedVariance = _speedVariance;
 @synthesize gravityX = _gravityX;
@@ -207,6 +215,10 @@ typedef struct
     copy->_endSizeVariance = _endSizeVariance;
     copy->_emitAngle = _emitAngle;
     copy->_emitAngleVariance = _emitAngleVariance;
+    copy->_startRotation = _startRotation;
+    copy->_startRotationVariance = _startRotationVariance;
+    copy->_endRotation = _endRotation;
+    copy->_endRotationVariance = _endRotationVariance;
     copy->_speed = _speed;
     copy->_speedVariance = _speedVariance;
     copy->_gravityX = _gravityX;
@@ -294,6 +306,7 @@ typedef struct
         
         _particleImage.x = particle.x;
         _particleImage.y = particle.y;
+        _particleImage.rotation = particle.rotation;
         _particleImage.scaleX = _particleImage.scaleY = MAX(0.0f, particle.size / baseSize);
         _particleImage.alpha = color.alpha;
         _particleImage.color = SP_COLOR(SP_CLAMP(color.red,   0.0f, 1.0f) * 255,
@@ -311,13 +324,13 @@ typedef struct
     
     if (_emitterType == SXParticleEmitterTypeRadial)
     {
-        particle->rotation += particle->rotationDelta * passedTime;
-        particle->radius   -= particle->radiusDelta   * passedTime;
-        particle->x = _emitterX - cosf(particle->rotation) * particle->radius;
-        particle->y = _emitterY - sinf(particle->rotation) * particle->radius;
+        particle->emitRotation += particle->emitRotationDelta * passedTime;
+        particle->emitRadius   -= particle->emitRadiusDelta   * passedTime;
+        particle->x = _emitterX - cosf(particle->emitRotation) * particle->emitRadius;
+        particle->y = _emitterY - sinf(particle->emitRotation) * particle->emitRadius;
         
-        if (particle->radius < _minRadius)
-            particle->timeToLive = 0;
+        if (particle->emitRadius < _minRadius)
+            particle->timeToLive = 0.0f;
     }
     else
     {
@@ -344,6 +357,7 @@ typedef struct
     }
     
     particle->size += particle->sizeDelta * passedTime;
+    particle->rotation += particle->rotationDelta * passedTime;
     
     // Update the particle's color
     particle->color.red   += particle->colorDelta.red   * passedTime;
@@ -358,11 +372,12 @@ typedef struct
         return;
     
     float lifespan = RANDOM_VARIANCE(_lifespan, _lifespanVariance);
-    if (lifespan <= 0.0f)
-        return;
     
     SXParticle *particle = &_particles[_numParticles++];
-    particle->timeToLive = lifespan;
+    particle->timeToLive = lifespan > 0.0f ? lifespan : 0.0f;
+    
+    if (lifespan <= 0.0f)
+        return;
     
     particle->x = RANDOM_VARIANCE(_emitterX, _emitterXVariance);
     particle->y = RANDOM_VARIANCE(_emitterY, _emitterYVariance);
@@ -374,10 +389,10 @@ typedef struct
     particle->velocityX = speed * cosf(angle);
     particle->velocityY = speed * sinf(angle);
     
-    particle->radius = RANDOM_VARIANCE(_maxRadius, _maxRadiusVariance);
-    particle->radiusDelta = _maxRadius / lifespan;
-    particle->rotation = RANDOM_VARIANCE(_emitAngle, _emitAngleVariance);
-    particle->rotationDelta = RANDOM_VARIANCE(_rotatePerSecond, _rotatePerSecondVariance);
+    particle->emitRadius = RANDOM_VARIANCE(_maxRadius, _maxRadiusVariance);
+    particle->emitRadiusDelta = _maxRadius / lifespan;
+    particle->emitRotation = RANDOM_VARIANCE(_emitAngle, _emitAngleVariance);
+    particle->emitRotationDelta = RANDOM_VARIANCE(_rotatePerSecond, _rotatePerSecondVariance);
     particle->radialAcceleration = RANDOM_VARIANCE(_radialAcceleration, _radialAccelerationVariance);
     particle->tangentialAcceleration = RANDOM_VARIANCE(_tangentialAcceleration, _tangentialAccelerationVariance);
     
@@ -397,6 +412,12 @@ typedef struct
     
     particle->color = startColor;
     particle->colorDelta = colorDelta;
+    
+    float startRotation = RANDOM_VARIANCE(_startRotation, _startRotationVariance);
+    float endRotation   = RANDOM_VARIANCE(_endRotation, _endRotationVariance);
+    
+    particle->rotation = startRotation;
+    particle->rotationDelta = (endRotation - startRotation) / lifespan;
     
     [self advanceParticle:particle byTime:time];
 }
@@ -489,6 +510,14 @@ typedef struct
             _emitAngle = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
         else if ([elementName isEqualToString:@"anglevariance"])
             _emitAngleVariance = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
+        else if ([elementName isEqualToString:@"rotationstart"])
+            _startRotation = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
+        else if ([elementName isEqualToString:@"rotationstartvariance"])
+            _startRotationVariance = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
+        else if ([elementName isEqualToString:@"rotationend"])
+            _endRotation = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
+        else if ([elementName isEqualToString:@"rotationendvariance"])
+            _endRotationVariance = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
         else if ([elementName isEqualToString:@"speed"])
             _speed = [[attributes objectForKey:@"value"] floatValue];
         else if ([elementName isEqualToString:@"speedvariance"])
