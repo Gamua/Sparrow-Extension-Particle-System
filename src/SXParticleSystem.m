@@ -390,7 +390,7 @@ typedef struct
     particle->velocityY = speed * sinf(angle);
     
     particle->emitRadius = RANDOM_VARIANCE(_maxRadius, _maxRadiusVariance);
-    particle->emitRadiusDelta = _maxRadius / lifespan;
+    particle->emitRadiusDelta = (_maxRadius - _minRadius) / lifespan;
     particle->emitRotation = RANDOM_VARIANCE(_emitAngle, _emitAngleVariance);
     particle->emitRotationDelta = RANDOM_VARIANCE(_rotatePerSecond, _rotatePerSecondVariance);
     particle->radialAcceleration = RANDOM_VARIANCE(_radialAcceleration, _radialAccelerationVariance);
