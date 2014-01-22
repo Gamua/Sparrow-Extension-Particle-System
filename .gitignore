@@ -10,5 +10,6 @@
 *.perspectivev3
 *.moved-aside
 xcuserdata
+xcshareddata
 profile
 build
