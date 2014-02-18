@@ -6,7 +6,6 @@
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-
-#import "Sparrow.h"
+#import <Sparrow/Sparrow.h>
 
 #endif

@@ -10,7 +10,7 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "Sparrow.h"
+#import <Sparrow/Sparrow.h>
 
 // --- structs & enums -----------------------------------------------------------------------------
 
