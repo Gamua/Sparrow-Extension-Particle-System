@@ -372,13 +372,12 @@ typedef struct
         return;
     
     float lifespan = RANDOM_VARIANCE(_lifespan, _lifespanVariance);
-    
-    SXParticle *particle = &_particles[_numParticles++];
-    particle->timeToLive = lifespan > 0.0f ? lifespan : 0.0f;
-    
+
     if (lifespan <= 0.0f)
         return;
-    
+
+    SXParticle *particle = &_particles[_numParticles++];
+    particle->timeToLive = lifespan;
     particle->x = RANDOM_VARIANCE(_emitterX, _emitterXVariance);
     particle->y = RANDOM_VARIANCE(_emitterY, _emitterYVariance);
     particle->startX = _emitterX;
