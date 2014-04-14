@@ -200,6 +200,9 @@ typedef struct
 /// The minimum radius of the radial emission.
 @property (nonatomic, assign) float minRadius;
 
+/// The variance of the minimum radius of the radial emission.
+@property (nonatomic, assign) float minRadiusVariance;
+
 /// The rotation per second (in radians) of the radial emission.
 @property (nonatomic, assign) float rotatePerSecond;
 

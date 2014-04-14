@@ -99,6 +99,7 @@ typedef struct
     float _maxRadius;                               // maxRadius
     float _maxRadiusVariance;                       // maxRadiusVariance
     float _minRadius;                               // minRadius
+    float _minRadiusVariance;                       // minRadiusVariance
     float _rotatePerSecond;                         // rotatePerSecond
     float _rotatePerSecondVariance;                 // rotatePerSecondVariance
     
@@ -148,6 +149,7 @@ typedef struct
 @synthesize maxRadius = _maxRadius;
 @synthesize maxRadiusVariance = _maxRadiusVariance;
 @synthesize minRadius = _minRadius;
+@synthesize minRadiusVariance = _minRadiusVariance;
 @synthesize rotatePerSecond = _rotatePerSecond;
 @synthesize rotatePerSecondVariance = _rotatePerSecondVariance;
 @synthesize blendFuncSource = _blendFuncSource;
@@ -230,6 +232,7 @@ typedef struct
     copy->_maxRadius = _maxRadius;
     copy->_maxRadiusVariance = _maxRadiusVariance;
     copy->_minRadius = _minRadius;
+    copy->_minRadiusVariance = _minRadiusVariance;
     copy->_rotatePerSecond = _rotatePerSecond;
     copy->_rotatePerSecondVariance = _rotatePerSecondVariance;
     copy->_startColor = _startColor;
@@ -325,12 +328,9 @@ typedef struct
     if (_emitterType == SXParticleEmitterTypeRadial)
     {
         particle->emitRotation += particle->emitRotationDelta * passedTime;
-        particle->emitRadius   -= particle->emitRadiusDelta   * passedTime;
+        particle->emitRadius   += particle->emitRadiusDelta   * passedTime;
         particle->x = _emitterX - cosf(particle->emitRotation) * particle->emitRadius;
         particle->y = _emitterY - sinf(particle->emitRotation) * particle->emitRadius;
-        
-        if (particle->emitRadius < _minRadius)
-            particle->timeToLive = 0.0f;
     }
     else
     {
@@ -387,9 +387,11 @@ typedef struct
     float speed = RANDOM_VARIANCE(_speed, _speedVariance);
     particle->velocityX = speed * cosf(angle);
     particle->velocityY = speed * sinf(angle);
-    
-    particle->emitRadius = RANDOM_VARIANCE(_maxRadius, _maxRadiusVariance);
-    particle->emitRadiusDelta = (_maxRadius - _minRadius) / lifespan;
+
+    float startRadius = RANDOM_VARIANCE(_maxRadius, _maxRadiusVariance);
+    float endRadius   = RANDOM_VARIANCE(_minRadius, _minRadiusVariance);
+    particle->emitRadius = startRadius;
+    particle->emitRadiusDelta = (endRadius - startRadius) / lifespan;
     particle->emitRotation = RANDOM_VARIANCE(_emitAngle, _emitAngleVariance);
     particle->emitRotationDelta = RANDOM_VARIANCE(_rotatePerSecond, _rotatePerSecondVariance);
     particle->radialAcceleration = RANDOM_VARIANCE(_radialAcceleration, _radialAccelerationVariance);
@@ -535,6 +537,8 @@ typedef struct
             _maxRadiusVariance = [[attributes objectForKey:@"value"] floatValue];
         else if ([elementName isEqualToString:@"minradius"])
             _minRadius = [[attributes objectForKey:@"value"] floatValue];
+        else if ([elementName isEqualToString:@"minradiusvariance"])
+            _minRadiusVariance = [[attributes objectForKey:@"value"] floatValue];
         else if ([elementName isEqualToString:@"rotatepersecond"])
             _rotatePerSecond = SP_D2R([[attributes objectForKey:@"value"] floatValue]);
         else if ([elementName isEqualToString:@"rotatepersecondvariance"])
